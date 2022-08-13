@@ -1,20 +1,30 @@
 # Make
 
-`Make` is a build automation tool that is used to automatically build C and C++ executable programs/libraries from source code. It originated at Bell Labs as a solution to manually building and linking many individual files.
+`Make` is a build automation tool that is used to automatically build C and C++ executable programs/libraries from
+source code. It originated at Bell Labs as a solution to manually building and linking many individual files.
 
-The `make` tool is applicable to any process which involves executing arbitrary commands to transform one or more source files into a target result. Therefore, `make` is not C/C++ specific.
+The `make` tool is applicable to any process which involves executing arbitrary commands to transform one or more source
+files into a target result. Therefore, `make` is not C/C++ specific.
 
 The instructions for `make` are stored in plain-text files known as "makefiles".
 
-Since the commands in a makefile are actually commandline functions, makefiles may not be compatible across systems. This has led to the development of platform-independent languages which generate platform-specific makefiles (e.g. `Autoconf`, `CMake`, `GYP`).
+Since the commands in a makefile are actually commandline functions, makefiles may not be compatible across systems.
+This has led to the development of platform-independent languages which generate platform-specific makefiles (e.g.
+`Autoconf`, `CMake`, `GYP`).
 
 ## Behaviour
 
-The `make` tool is available as an OS command line tool. Most OSes have their own versions of the code, though the functionality is very close between versions.
+The `make` tool is available as an OS command line tool. Most OSes have their own versions of the code, though the
+functionality is very close between versions.
 
-Without arguments, `make` will build the default target from the first makefile it encounters. Each implementation of `make` has its own method to search for makefiles: for example, the GNU version of `make` will search for a file named `GNUmakefile`, `Makefile`, or `makefile`, non-recursively, in file order in the present working directory. If a makefile does not have an explicit default target, the first target is the default target.
+Without arguments, `make` will build the default target from the first makefile it encounters. Each implementation of
+`make` has its own method to search for makefiles: for example, the GNU version of `make` will search for a file named
+`GNUmakefile`, `Makefile`, or `makefile`, non-recursively, in file order in the present working directory. If a makefile
+does not have an explicit default target, the first target is the default target.
 
-`Make` determines which targets need to be recomputed using a combination of topological sorting over dependent targets and comparing file modification timestamps. As a result, modifications that change the file modification timestamp to an older one (e.g. reverting revisions) are not correctly picked up by "make" and require a full rebuild.
+`Make` determines which targets need to be recomputed using a combination of topological sorting over dependent targets
+and comparing file modification timestamps. As a result, modifications that change the file modification timestamp to an
+older one (e.g. reverting revisions) are not correctly picked up by "make" and require a full rebuild.
 
 ## Language
 
@@ -50,7 +60,10 @@ target [target ...] : [component ...] ; command
 
 #### Pattern Rules
 
-"Pattern rules" are rules that target all files with a particular pattern, usually used for converting all files with a particular file extension. A pattern rule looks like an ordinary rule, except that the target (and possibly the component) uses a special character `%` to denote a file-matching pattern (`%` evaluates to any substring of 0 or more characters).
+"Pattern rules" are rules that target all files with a particular pattern, usually used for converting all files with a
+particular file extension. A pattern rule looks like an ordinary rule, except that the target (and possibly the
+component) uses a special character `%` to denote a file-matching pattern (`%` evaluates to any substring of 0 or more
+characters).
 
 Pattern rules have access to three predefined macros:
 - `$<`: Refers to the component in full. For example, if the rule has syntax `%.o : %.c`, then `$<` refers to `main.c`
@@ -64,9 +77,12 @@ Macros are named sequences of characters used to inject text without repetition.
 name = definition
 ```
 - "name" is the name of the macro; it can be any unbroken sequence of uppercase characters
-- "definition" is the replacement text for the macro: it can be text, other macros, or the results of a shell/commandline interpreter command
+- "definition" is the replacement text for the macro: it can be text, other macros, or the results of a
+  shell/commandline interpreter command
 
-Macros can be defined in the commandline arguments to `make` or in the makefile itself. If there is a conflict, the definition in the commandline arguments overwrites the makefile macro definition. Environment variables are available as macros in a makefile.
+Macros can be defined in the commandline arguments to `make` or in the makefile itself. If there is a conflict, the
+definition in the commandline arguments overwrites the makefile macro definition. Environment variables are available
+as macros in a makefile.
 
 Default shell scripting macros (e.g. `?`, `@`, etc.) can be accessed by prefixing them with `$`.
 
@@ -78,4 +94,38 @@ The `make` language allows single-line comments. Any text after a `#` symbol and
 
 ### Line Continuation
 
-The `make` language allows component lists and commands to take up multiple lines using the `\ ` "line continuation" symbol. If a line ends with a backslash followed by a newline, `make` will concatenate it and the following line.
+The `make` language allows component lists and commands to take up multiple lines using the `\ ` "line continuation"
+symbol. If a line ends with a backslash followed by a newline, `make` will concatenate it and the following line.
+
+### Nested Projects & Performance
+
+The traditional approach to dealing with nested projects/source directories with make was to make a `makefile` for each
+directory, and have the root `makefile` depend on them. This, combined with the fact that make is a text-based language,
+not a token-based language, could lead to massively inefficient build systems which rebuilt too many files on update,
+and did it too slowly. The exact causes and effects of this are better elaborated in this paper:
+[Recursive Make Considered Harmful](https://web.archive.org/web/20150319074420/http://aegis.sourceforge.net/auug97.pdf).
+
+The solution proposed by the paper was to use a single `makefile` which would use intermediary dependency files to store
+parts of the make target DAG (directed acyclic graph). Doing so eventually became so popular, that compilers like GCC
+directly built in options to generate these files.
+
+This is done by adding the appropriate `-M` options to the GCC compile command, as well as including the generated
+files. Consider the following example targets:
+```make
+DEPFILES := $(OBJECTS:.d=.o)
+
+%.d: %.c
+	GCC -MD -MP -MF $@ -MT '$@ $(@:.d=.o)' $< -c -o $(@:.d=.o)
+
+-include $(DEPFILES)
+```
+
+Often, it's nice to organize the depedency files into a separate directory:
+```make
+DEPFILES := $(addprefix $(DEP_DIR),$(OBJECTS:.d=.o))
+
+$(addprefix $(DEP_DIR),%.d): %.c
+	GCC -MD -MP -MF $@ -MT '$@ $(<:.c=.o)' $< -c -o $(<:.c=.o)
+
+-include $(DEPFILES)
+```
